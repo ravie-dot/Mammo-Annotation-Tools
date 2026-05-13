@@ -1,0 +1,81 @@
+name: Build MammoAnnotation macOS App
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: macos-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true  # Silences the Node.js warning
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'  # Most stable with PyQt5
+          cache: 'pip'
+          
+      - name: Debug - List files
+        run: |
+          echo "Files in repository:"
+          ls -la
+          python --version
+
+      - name: Install system dependencies
+        run: |
+          brew update
+          brew install opencv
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          pip install pyinstaller==5.13.0
+          pip install opencv-python-headless==4.5.5.64
+          pip install numpy==1.21.6
+          pip install PyQt5==5.15.7
+          pip install Pillow==9.0.0
+
+      - name: Verify installations
+        run: |
+          python -c "import cv2; print(f'OpenCV: {cv2.__version__}')"
+          python -c "import numpy; print(f'NumPy: {numpy.__version__}')"
+          python -c "import PyQt5; print('PyQt5 OK')"
+
+      - name: Build application
+        run: |
+          pyinstaller --onedir \
+            --windowed \
+            --name "MammoAnnotation" \
+            --add-data "mammo_paths.py:." \
+            --hidden-import PyQt5 \
+            --hidden-import PyQt5.QtCore \
+            --hidden-import PyQt5.QtGui \
+            --hidden-import PyQt5.QtWidgets \
+            --hidden-import cv2 \
+            --hidden-import numpy \
+            --collect-all PyQt5 \
+            app.py
+
+      - name: Prepare .app bundle
+        run: |
+          if [ -d "dist/MammoAnnotation" ]; then
+            echo "✅ Build successful!"
+            ls -la dist/
+            # Create a zip for easier download
+            cd dist && zip -r MammoAnnotation.app.zip MammoAnnotation.app && cd ..
+          else
+            echo "❌ Build failed - dist/MammoAnnotation not found"
+            exit 1
+          fi
+
+      - name: Upload .app bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: MammoAnnotation-macOS
+          path: dist/MammoAnnotation.app.zip
+          retention-days: 30
